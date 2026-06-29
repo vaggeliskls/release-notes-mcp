@@ -1,0 +1,37 @@
+services:
+  release-notes-mcp:
+    # Published by .github/workflows/release.yml on each GitHub Release.
+    # `docker compose watch` builds locally and tags it with this same name.
+    image: ghcr.io/turintech/release-notes-mcp:latest
+    build: .
+    container_name: release-notes-mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Provider + auth come from .env (provider-agnostic). Token is never in config.
+      PROVIDER: ${PROVIDER:-github}
+      BASE_URL: ${BASE_URL:-}
+      TOKEN: ${TOKEN:-}
+      MCP_TRANSPORT: http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8000"
+      RELEASE_MCP_CONFIG: /app/config.json
+    volumes:
+      # Mount your real config read-only; keep it out of the image.
+      # Edits appear live; run `docker compose restart` to reload (read at startup).
+      - ./config.json:/app/config.json:ro
+
+    # `docker compose watch` — develop against the container.
+    # https://docs.docker.com/reference/compose-file/develop/
+    develop:
+      watch:
+        # Edit server.py → sync into the container and restart the process.
+        - path: ./server.py
+          target: /app/server.py
+          action: sync+restart
+        # Dependency or image changes → rebuild the image.
+        - path: ./requirements.txt
+          action: rebuild
+        - path: ./Dockerfile
+          action: rebuild
