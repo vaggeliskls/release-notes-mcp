@@ -1,0 +1,14 @@
+{
+  "repos": [
+    "myorg/auth-service",
+    "myorg/web",
+    "myorg/payments-api"
+  ],
+  "contextSources": [
+    {
+      "name": "release-info",
+      "url": "https://turintech.github.io/artemis-deployment/release.json",
+      "description": "Extra context to consult when assembling release notes"
+    }
+  ]
+}
