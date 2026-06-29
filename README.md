@@ -66,14 +66,27 @@ missing. Copy `config.example.json` to get started.
 Selection is **dynamic** — you (or Claude) pass the `(repo, tag)` pairs to
 combine. The server's `instructions` tell Claude to call `get_context()` first.
 
-## Run with `docker compose watch`
+## Run
 
 The server runs in a container over **HTTP transport** on `localhost:8000`.
-`docker compose watch` keeps it live while you edit:
+First create the config and env files (both runs need them):
 
 ```bash
 cp config.example.json config.json   # edit repos + contextSources (no secrets)
 cp .env.example .env                  # set TOKEN (+ PROVIDER / BASE_URL if needed)
+```
+
+### Normal run
+
+```bash
+docker compose up -d
+```
+
+### Local development — `docker compose watch`
+
+For local dev, `docker compose watch` keeps the server live while you edit:
+
+```bash
 docker compose watch
 ```
 
