@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -240,6 +241,41 @@ if not PROVIDER.base:
     )
 
 
+def _parse_dt(s: str) -> datetime:
+    """Parse an ISO-8601 timestamp (or bare date), normalizing to UTC-aware."""
+    s = s.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        dt = datetime.fromisoformat(s + "T00:00:00")
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _shape(
+    releases: list[dict[str, Any]],
+    *,
+    include_body: bool,
+    published_after: str = "",
+) -> list[dict[str, Any]]:
+    """Apply the `published_after` filter and drop bodies unless asked for.
+
+    Stripping the body keeps discovery responses small (a release body can be
+    tens of KB); callers fetch full notes with `get_release` /
+    `gather_release_notes`, or by passing `include_body=True`.
+    """
+    cutoff = _parse_dt(published_after) if published_after else None
+    out: list[dict[str, Any]] = []
+    for r in releases:
+        if cutoff is not None:
+            pub = r.get("published_at")
+            if not pub or _parse_dt(pub) <= cutoff:
+                continue
+        out.append(r if include_body else {k: v for k, v in r.items() if k != "body"})
+    return out
+
+
 def check_repo(repo: str) -> None:
     """Keep the server scoped to configured repos."""
     if REPOS and repo not in REPOS:
@@ -282,11 +318,24 @@ def list_repos() -> dict[str, Any]:
 
 
 @mcp.tool()
-async def list_releases(repo: str, limit: int = 10) -> list[dict[str, Any]]:
-    """List recent releases for one repo (newest first). `repo` is 'owner/name'."""
+async def list_releases(
+    repo: str,
+    limit: int = 10,
+    include_body: bool = False,
+    published_after: str = "",
+) -> list[dict[str, Any]]:
+    """List recent releases for one repo (newest first). `repo` is 'owner/name'.
+
+    By default the release `body` is omitted to keep the response small — pass
+    `include_body=True` only when you need the notes text. `published_after`
+    (ISO-8601, e.g. '2026-06-02' or '2026-06-02T14:18:43Z') keeps only releases
+    published strictly after that instant. `limit` is applied before the filter,
+    so raise it when filtering a long history.
+    """
     check_repo(repo)
     async with httpx.AsyncClient(timeout=15) as c:
-        return await PROVIDER.list_releases(c, repo, limit)
+        releases = await PROVIDER.list_releases(c, repo, limit)
+    return _shape(releases, include_body=include_body, published_after=published_after)
 
 
 @mcp.tool()
@@ -306,10 +355,17 @@ async def get_release(repo: str, tag: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def compare_releases(repo: str, from_tag: str, to_tag: str) -> list[dict[str, Any]]:
+async def compare_releases(
+    repo: str,
+    from_tag: str,
+    to_tag: str,
+    include_body: bool = False,
+) -> list[dict[str, Any]]:
     """
     Return every release in `repo` published after `from_tag` up to and including
     `to_tag` (newest first) — useful when a service jumped several versions.
+
+    Bodies are omitted by default (pass `include_body=True` for the notes text).
     """
     check_repo(repo)
     async with httpx.AsyncClient(timeout=15) as c:
@@ -320,7 +376,7 @@ async def compare_releases(repo: str, from_tag: str, to_tag: str) -> list[dict[s
         raise ValueError(f"to_tag '{to_tag}' not found in {repo}")
     to_idx = tags.index(to_tag)
     from_idx = tags.index(from_tag) if from_tag in tags else len(tags)
-    return releases[to_idx:from_idx]
+    return _shape(releases[to_idx:from_idx], include_body=include_body)
 
 
 @mcp.tool()
