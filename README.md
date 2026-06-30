@@ -1,5 +1,7 @@
 # release-notes-mcp
 
+<!-- mcp-name: io.github.vaggeliskls/release-notes-mcp -->
+
 A small, generic MCP server that combines GitHub releases from several
 repositories into a single product release note. The server just fetches and
 bundles raw data; the LLM synthesizes the final notes.
@@ -46,10 +48,17 @@ Environment (provider-agnostic, set in `.env` or your shell):
 
 - `format` on a context source is **optional** — auto-detected from
   `Content-Type` / URL extension / content sniffing. Override only when wrong.
-- The config path defaults to `./config.json`; override with `RELEASE_MCP_CONFIG`.
 
-`config.json` is **required** — the server raises an error on startup if it's
-missing. Copy `config.example.json` to get started.
+**The config (repos + contextSources) must come from one of two places** — the
+server errors on startup if neither is set:
+
+| Source | Use it for |
+|--------|-----------|
+| `RELEASE_MCP_CONFIG_JSON` | The config as **inline JSON**. No file needed — ideal for `uvx` / MCP hubs where everything is an env var. |
+| `RELEASE_MCP_CONFIG` | Path to a `config.json` **file** (default `./config.json`). Used by the container, which mounts a real file. |
+
+Inline JSON wins when both are set. Copy `config.example.json` to get started
+with the file approach.
 
 ## Tools
 
@@ -96,12 +105,46 @@ docker compose watch
 | `requirements.txt`, `Dockerfile` | **rebuild** — image is rebuilt automatically |
 | `config.json` | bind-mounted (live); run `docker compose restart` to reload it |
 
+### Run with `uvx` (no clone, no container)
+
+The server is published to PyPI, so a client can launch it on demand with
+[`uvx`](https://docs.astral.sh/uv/) — no checkout and no Docker:
+
+```bash
+uvx release-notes-mcp
+```
+
+`uvx` talks to the server over **stdio** (the default transport). Since there's
+no file to mount, pass the config **inline** as JSON via `RELEASE_MCP_CONFIG_JSON`
+(everything is env-only — ideal for MCP hubs):
+
+```bash
+RELEASE_MCP_CONFIG_JSON='{"repos":["myorg/web"],"contextSources":[]}' \
+  TOKEN=ghp_... uvx release-notes-mcp
+```
+
+Prefer a file? Point `RELEASE_MCP_CONFIG` at an **absolute** path instead
+(`uvx` runs from an unknown working directory, so a relative path won't resolve):
+
+```bash
+RELEASE_MCP_CONFIG=/abs/path/config.json TOKEN=ghp_... uvx release-notes-mcp
+```
+
 ## Register with Claude Code
 
-Point Claude Code at the running HTTP server by its URL:
+**HTTP (container)** — point Claude Code at the running server by its URL:
 
 ```bash
 claude mcp add --transport http release-notes http://localhost:8000/mcp
+```
+
+**stdio (`uvx`)** — let Claude Code launch the server as a subprocess:
+
+```bash
+claude mcp add release-notes \
+  --env RELEASE_MCP_CONFIG=/abs/path/config.json \
+  --env TOKEN=ghp_... \
+  -- uvx release-notes-mcp
 ```
 
 Then ask Claude: *"Combine the latest releases of auth-service and web into a
