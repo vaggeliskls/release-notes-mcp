@@ -192,17 +192,30 @@ PROVIDERS = {p.name: p for p in (GitHubProvider, GitLabProvider, GiteaProvider)}
 # Config
 # --------------------------------------------------------------------------- #
 
-CONFIG_PATH = os.environ.get("RELEASE_MCP_CONFIG", "config.json")
-
-
 def load_config() -> dict[str, Any]:
-    path = Path(CONFIG_PATH)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Config file not found: {path}. Copy config.example.json to config.json "
-            f"(or point RELEASE_MCP_CONFIG at your config)."
-        )
-    cfg = json.loads(path.read_text())
+    """
+    Load the non-secret config (repos + contextSources) from, in order:
+
+      1. `RELEASE_MCP_CONFIG_JSON` — the config as inline JSON. Best for `uvx`
+         and MCP hubs, where everything is passed as environment variables and
+         there is no file to mount.
+      2. The file at `RELEASE_MCP_CONFIG` (default `./config.json`) — used by the
+         container, which bind-mounts a real config.
+
+    One of the two must be set; otherwise the server has nothing to read.
+    """
+    inline = os.environ.get("RELEASE_MCP_CONFIG_JSON")
+    if inline:
+        cfg = json.loads(inline)
+    else:
+        path = Path(os.environ.get("RELEASE_MCP_CONFIG", "config.json"))
+        if not path.exists():
+            raise FileNotFoundError(
+                f"No config found. Set RELEASE_MCP_CONFIG_JSON to inline JSON, or "
+                f"point RELEASE_MCP_CONFIG at a config file (looked for: {path}). "
+                f"Copy config.example.json to get started."
+            )
+        cfg = json.loads(path.read_text())
     cfg.setdefault("repos", [])
     cfg.setdefault("contextSources", [])
     return cfg
@@ -388,8 +401,11 @@ async def get_context(name: str = "") -> list[dict[str, Any]]:
         return await asyncio.gather(*(one(s) for s in sources))
 
 
-if __name__ == "__main__":
-    # stdio (default) for a client-launched subprocess; http to run as a service.
+def main() -> None:
+    """Console-script entry point (`release-notes-mcp`, also used by `uvx`).
+
+    stdio (default) for a client-launched subprocess; http to run as a service.
+    """
     transport = os.environ.get("MCP_TRANSPORT", "stdio")
     if transport in ("http", "streamable-http", "sse"):
         mcp.run(
@@ -399,4 +415,8 @@ if __name__ == "__main__":
         )
     else:
         mcp.run()
+
+
+if __name__ == "__main__":
+    main()
 

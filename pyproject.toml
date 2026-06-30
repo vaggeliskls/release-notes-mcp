@@ -1,12 +1,30 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
 [project]
 name = "release-notes-mcp"
-version = "0.1.0"
 description = "A small, generic MCP server for combining GitHub releases into product release notes"
+readme = "README.md"
 requires-python = ">=3.10"
+keywords = ["mcp", "release-notes", "github", "gitlab", "gitea"]
+dynamic = ["version"]   # derived from the git tag by hatch-vcs
 dependencies = [
     "fastmcp>=2.0",
     "httpx>=0.27",
 ]
 
+[project.urls]
+Homepage = "https://github.com/vaggeliskls/release-notes-mcp"
+Repository = "https://github.com/vaggeliskls/release-notes-mcp"
+
 [project.scripts]
-release-notes-mcp = "server:mcp.run"
+release-notes-mcp = "server:main"
+
+# Version comes from the latest git tag (e.g. tag `v0.2.0` -> version `0.2.0`).
+[tool.hatch.version]
+source = "vcs"
+
+# server.py is a single top-level module (not a package); tell hatchling to ship it.
+[tool.hatch.build.targets.wheel]
+include = ["server.py"]

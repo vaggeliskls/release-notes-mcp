@@ -42,3 +42,58 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Build the wheel + sdist and publish to PyPI so the server can be run with
+  # `uvx release-notes-mcp`. Auth is PyPI Trusted Publishing (OIDC) — no secret;
+  # the `id-token: write` permission lets uv mint a short-lived token.
+  pypi:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for PyPI Trusted Publishing (OIDC)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # hatch-vcs derives the version from git tags
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish
+
+  # List the server in the official MCP Registry (registry.modelcontextprotocol.io)
+  # so MCP hubs/clients can discover it. Runs after the package is on PyPI, since
+  # the registry validates that the referenced PyPI version exists. Auth is GitHub
+  # OIDC — no secret; the namespace io.github.vaggeliskls/* is owned by this repo.
+  registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for `mcp-publisher login github-oidc`
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Sync server.json version to the release tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${TAG#v}"
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' \
+            server.json > server.tmp && mv server.tmp server.json
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
