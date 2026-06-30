@@ -329,13 +329,17 @@ async def list_releases(
     By default the release `body` is omitted to keep the response small — pass
     `include_body=True` only when you need the notes text. `published_after`
     (ISO-8601, e.g. '2026-06-02' or '2026-06-02T14:18:43Z') keeps only releases
-    published strictly after that instant. `limit` is applied before the filter,
-    so raise it when filtering a long history.
+    published strictly after that instant. `limit` caps the number of releases
+    returned; when filtering by `published_after` the server scans up to 100
+    releases of history (the same ceiling as `compare_releases`) before applying
+    it, so the filter sees real history rather than just the first `limit` rows.
     """
     check_repo(repo)
+    fetch = max(limit, 100) if published_after else limit
     async with httpx.AsyncClient(timeout=15) as c:
-        releases = await PROVIDER.list_releases(c, repo, limit)
-    return _shape(releases, include_body=include_body, published_after=published_after)
+        releases = await PROVIDER.list_releases(c, repo, fetch)
+    shaped = _shape(releases, include_body=include_body, published_after=published_after)
+    return shaped[:limit]
 
 
 @mcp.tool()
