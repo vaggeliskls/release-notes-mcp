@@ -49,6 +49,21 @@ Environment (provider-agnostic, set in `.env` or your shell):
 - `format` on a context source is **optional** — auto-detected from
   `Content-Type` / URL extension / content sniffing. Override only when wrong.
 
+### Token permissions
+
+The server only ever **reads releases** (`GET /repos/{owner}/{repo}/releases…`),
+so give `TOKEN` the minimum read scope — never write access.
+
+| Provider | Public repos | Private repos |
+|----------|--------------|---------------|
+| **GitHub** — fine-grained PAT | no token needed | **Contents: Read-only** (releases live under Contents), for each repo you list |
+| **GitHub** — classic PAT | no token needed (or `public_repo`) | `repo` scope |
+| **GitLab** | no token needed | `read_api` scope |
+| **Gitea / Forgejo** | no token needed | `read:repository` scope |
+
+For GitHub, a fine-grained PAT scoped to just the repos in `config.json` with
+**Contents → Read-only** is the tightest setup and is all this server requires.
+
 **The config (repos + contextSources) must come from one of two places** — the
 server errors on startup if neither is set:
 
